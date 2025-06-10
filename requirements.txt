@@ -1,12 +1,71 @@
-asr-decoder
-funasr
-online-fbank
-pysilero
-sounddevice
-soundfile
+# Voice Recognition App Dependencies
+
+# ======== Core Dependencies ========
+# Numerical computing and array processing
+numpy==1.26.3
+
+# PyTorch deep learning framework
 torch<=2.3
 torchaudio
+
+# ======== ASR Dependencies ========
+# FunASR speech recognition framework
+funasr
+asr-decoder
+online-fbank
+
+# Voice activity detection
+pysilero
+
+# Optional: WebRTC VAD (may be needed in some environments)
+# webrtcvad
+
+# ======== Audio Processing ========
+# Audio device interface
+sounddevice
+
+# Audio file I/O
+soundfile
+
+# Audio format conversion
 pydub
+
+# ======== Model & Inference ========
+# ONNX model support
 onnx
 onnxconverter_common
-numpy==1.26.3
+
+# ModelScope model hub
+modelscope
+
+# Transformers library
+transformers
+datasets
+accelerate
+
+# ======== System Utilities ========
+# Clipboard operations
+pyperclip
+
+# Package management and version control
+packaging
+
+# ======== Network Dependencies ========
+# HTTP request library
+requests
+urllib3
+certifi
+charset-normalizer
+idna
+
+# ======== Optional Dependencies ========
+# The following packages may be needed in some environments, but are not required:
+# - webrtcvad: WebRTC VAD support (may be difficult to install on some systems)
+# - pyautogui: GUI automation (if screen operation features are needed)
+# - keyboard: Keyboard event listening (if hotkey features are needed)
+
+# ======== Development & Debug ========
+# The following packages are for development and debugging, optional in production:
+# - jupyter: Jupyter Notebook support
+# - matplotlib: Data visualization
+# - scipy: Scientific computing library

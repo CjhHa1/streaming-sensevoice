@@ -21,7 +21,7 @@ def main():
     contexts = ["停止"]
     model = StreamingSenseVoice(contexts=contexts)
 
-    samples, sr = sf.read("data/test_16k.wav")
+    samples, sr = sf.read("data/test_16k_2.wav")
     samples = (samples * 32768).tolist() * 3
 
     step = int(0.1 * sr)
