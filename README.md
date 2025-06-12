@@ -20,7 +20,7 @@ python voice_recognition_app.py
 ```
 
 ## Voice Commands
-
+Commands are managed by config file: `keyboard_shortcuts.yaml`
 ### System Control
 - **退出/关闭**: Exit application
 - **刷新**: Refresh (F5)
@@ -43,6 +43,16 @@ python voice_recognition_app.py
 - **增大音量/减小音量**: Volume up/down
 - **静音**: Mute toggle
 - **截图**: Screenshot (PrtSc)
+
+## Customized Commands
+If you prefer add some self-defined commands(with Keyboard ShortCuts), please add your short cut in file `keyboard_shortcuts.yaml`, like:
+```
+# 添加打开任务管理器
+- command: "打开任务管理器"
+  keys: "ctrl+shift+esc"
+  description: "打开Windows任务管理器"
+```
+
 
 ## Usage Examples
 

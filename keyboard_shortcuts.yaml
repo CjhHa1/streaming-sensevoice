@@ -3,122 +3,99 @@
 # command: 命令名称
 # keys: 按键组合，使用+连接，例如：ctrl+c
 # description: 命令描述
-# category: 命令类别
 
 shortcuts:
-  # 应用控制命令
+  # 应用控制
   - command: "退出"
     keys: "alt+f4"
     description: "退出应用程序"
-    category: "应用控制"
 
   - command: "停止"
     keys: "ctrl+c"
     description: "停止当前操作"
-    category: "应用控制"
 
-  # 系统操作命令
+  # 系统操作
   - command: "刷新"
     keys: "f5"
     description: "刷新当前窗口/页面"
-    category: "系统操作"
 
   - command: "复制"
     keys: "ctrl+c"
     description: "复制选中内容"
-    category: "系统操作"
 
   - command: "粘贴"
     keys: "ctrl+v"
     description: "粘贴内容"
-    category: "系统操作"
 
   - command: "剪切"
     keys: "ctrl+x"
     description: "剪切选中内容"
-    category: "系统操作"
 
   - command: "撤销"
     keys: "ctrl+z"
     description: "撤销上一步操作"
-    category: "系统操作"
 
   - command: "重做"
     keys: "ctrl+y"
     description: "重做上一步操作"
-    category: "系统操作"
 
   - command: "保存"
     keys: "ctrl+s"
     description: "保存当前文件"
-    category: "系统操作"
 
   - command: "全选"
     keys: "ctrl+a"
     description: "选择所有内容"
-    category: "系统操作"
 
-  # 窗口操作命令
+  # 窗口操作
   - command: "最小化"
     keys: "win+down"
     description: "最小化当前窗口"
-    category: "窗口操作"
 
   - command: "最大化"
     keys: "win+up"
     description: "最大化当前窗口"
-    category: "窗口操作"
 
   - command: "关闭窗口"
     keys: "alt+f4"
     description: "关闭当前窗口"
-    category: "窗口操作"
 
   - command: "切换窗口"
     keys: "alt+tab"
     description: "切换到下一个窗口"
-    category: "窗口操作"
 
-  # 浏览器操作命令
+  # 浏览器操作
   - command: "新建标签"
     keys: "ctrl+t"
     description: "新建浏览器标签"
-    category: "浏览器操作"
 
   - command: "关闭标签"
     keys: "ctrl+w"
     description: "关闭当前标签"
-    category: "浏览器操作"
 
-  # 文件操作命令
+  # 文件操作
   - command: "打开文件"
     keys: "ctrl+o"
     description: "打开文件对话框"
-    category: "文件操作"
 
   - command: "新建文件"
     keys: "ctrl+n"
     description: "新建文件"
-    category: "文件操作"
 
-  # 音量控制命令
+  # 音量控制
   - command: "增大音量"
     keys: "volume up"
     description: "增大系统音量"
-    category: "音量控制"
 
   - command: "减小音量"
     keys: "volume down"
     description: "减小系统音量"
-    category: "音量控制"
 
   - command: "静音"
     keys: "volume mute"
     description: "切换静音状态"
-    category: "音量控制"
 
-  # 屏幕操作命令
+  # 屏幕操作
   - command: "截图"
     keys: "print screen"
     description: "截取屏幕"
-    category: "屏幕操作" 

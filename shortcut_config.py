@@ -78,7 +78,7 @@ class ShortcutConfig:
         """
         return self.command_to_keys.get(command)
     
-    def set_shortcut(self, command: str, keys: str, description: str = "", category: str = "") -> bool:
+    def set_shortcut(self, command: str, keys: str, description: str = "") -> bool:
         """
         设置命令的快捷键
         
@@ -86,7 +86,6 @@ class ShortcutConfig:
             command: 命令名称
             keys: 快捷键组合
             description: 命令描述
-            category: 命令类别
             
         Returns:
             bool: 是否成功设置
@@ -97,8 +96,6 @@ class ShortcutConfig:
                 shortcut['keys'] = keys
                 if description:
                     shortcut['description'] = description
-                if category:
-                    shortcut['category'] = category
                 self.command_to_keys[command] = keys
                 return self.save_config()
         
@@ -106,8 +103,7 @@ class ShortcutConfig:
         new_shortcut = {
             'command': command,
             'keys': keys,
-            'description': description,
-            'category': category
+            'description': description
         }
         self.shortcuts.append(new_shortcut)
         self.command_to_keys[command] = keys
@@ -130,39 +126,14 @@ class ShortcutConfig:
                 return self.save_config()
         return False
     
-    def get_shortcuts_by_category(self, category: str) -> List[Dict]:
-        """
-        获取指定类别的所有快捷键
-        
-        Args:
-            category: 类别名称
-            
-        Returns:
-            List[Dict]: 快捷键配置列表
-        """
-        return [
-            shortcut for shortcut in self.shortcuts
-            if shortcut['category'] == category
-        ]
-    
-    def print_shortcuts(self, category: Optional[str] = None):
+    def print_shortcuts(self):
         """
         打印快捷键配置
-        
-        Args:
-            category: 可选，指定要打印的类别
         """
-        if category:
-            shortcuts = self.get_shortcuts_by_category(category)
-            print(f"\n📋 {category} 快捷键:")
-        else:
-            shortcuts = self.shortcuts
-            print("\n📋 所有快捷键:")
-        
+        print("\n📋 所有快捷键:")
         print("-" * 60)
-        for shortcut in shortcuts:
+        for shortcut in self.shortcuts:
             print(f"命令: {shortcut['command']}")
             print(f"快捷键: {shortcut['keys']}")
             print(f"描述: {shortcut['description']}")
-            print(f"类别: {shortcut['category']}")
             print("-" * 60) 
