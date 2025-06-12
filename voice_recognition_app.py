@@ -240,88 +240,7 @@ class CommandProcessor:
     def print_available_commands(self):
         """打印可用的语音命令和对应的快捷键"""
         self.shortcut_config.print_shortcuts()
-    
-    # 修改所有使用快捷键的命令方法，使用新的配置系统
-    def refresh(self):
-        """刷新当前窗口/页面"""
-        return self.execute_shortcut("刷新")
-    
-    def copy(self):
-        """复制到剪贴板"""
-        return self.execute_shortcut("复制")
-    
-    def paste(self):
-        """从剪贴板粘贴"""
-        return self.execute_shortcut("粘贴")
-    
-    def cut(self):
-        """剪切到剪贴板"""
-        return self.execute_shortcut("剪切")
-    
-    def undo(self):
-        """撤销操作"""
-        return self.execute_shortcut("撤销")
-    
-    def redo(self):
-        """重做操作"""
-        return self.execute_shortcut("重做")
-    
-    def save(self):
-        """保存文件"""
-        return self.execute_shortcut("保存")
-    
-    def select_all(self):
-        """全选"""
-        return self.execute_shortcut("全选")
-    
-    def minimize_window(self):
-        """最小化当前窗口"""
-        return self.execute_shortcut("最小化")
-    
-    def maximize_window(self):
-        """最大化当前窗口"""
-        return self.execute_shortcut("最大化")
-    
-    def close_window(self):
-        """关闭当前窗口"""
-        return self.execute_shortcut("关闭窗口")
-    
-    def switch_window(self):
-        """切换窗口"""
-        return self.execute_shortcut("切换窗口")
-    
-    def new_tab(self):
-        """新建浏览器标签"""
-        return self.execute_shortcut("新建标签")
-    
-    def close_tab(self):
-        """关闭浏览器标签"""
-        return self.execute_shortcut("关闭标签")
-    
-    def open_file(self):
-        """打开文件对话框"""
-        return self.execute_shortcut("打开文件")
-    
-    def new_file(self):
-        """新建文件"""
-        return self.execute_shortcut("新建文件")
-    
-    def volume_up(self):
-        """增大音量"""
-        return self.execute_shortcut("增大音量")
-    
-    def volume_down(self):
-        """减小音量"""
-        return self.execute_shortcut("减小音量")
-    
-    def mute(self):
-        """静音/取消静音"""
-        return self.execute_shortcut("静音")
-    
-    def screenshot(self):
-        """屏幕截图"""
-        return self.execute_shortcut("截图")
-    
+        
     def open_browser(self):
         """打开默认浏览器"""
         try:
@@ -524,6 +443,21 @@ class CommandProcessor:
         self.last_command = None
         self.last_command_time = 0
         self.last_recognized_text = ""
+
+    # ===== 应用控制命令 =====
+    def exit_app(self):
+        """退出应用"""
+        print("👋 正在退出应用...")
+        if self.app:
+            self.app.stop_recognition()
+        os._exit(0)
+    
+    def stop_recognition(self):
+        """停止语音识别"""
+        print("🛑 停止语音识别")
+        if self.app:
+            self.app.stop_recognition()
+        return True
 
 
 class SimpleVAD:
