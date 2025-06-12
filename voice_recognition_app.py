@@ -16,6 +16,7 @@ import subprocess
 import os
 import webbrowser
 from difflib import SequenceMatcher
+from shortcut_config import ShortcutConfig
 
 # 尝试导入pyperclip，如果失败则使用备用方案
 try:
@@ -23,6 +24,16 @@ try:
 except ImportError:
     print("⚠️ pyperclip未安装，剪贴板功能将使用系统命令")
     pyperclip = None
+
+# 导入keyboard库用于键盘模拟
+try:
+    import keyboard
+    print("✅ keyboard库已导入，将使用键盘模拟进行命令执行")
+    KEYBOARD_AVAILABLE = True
+except ImportError:
+    print("⚠️ keyboard库未安装，将使用备用方案")
+    keyboard = None
+    KEYBOARD_AVAILABLE = False
 
 # 在导入funasr相关模块之前，修补inspect模块
 import inspect
@@ -86,59 +97,39 @@ class CommandProcessor:
         self.last_recognized_text = ""  # 最后识别的文本
         self.text_repeat_threshold = 0.8  # 文本重复阈值
         
-        # 测试PowerShell环境
-        self.powershell_available = self.test_powershell_environment()
+        # 检查keyboard库是否可用
+        self.keyboard_available = KEYBOARD_AVAILABLE
+        if self.keyboard_available:
+            print("✅ 键盘模拟功能已启用")
+        else:
+            print("⚠️ keyboard库不可用，将使用备用方案")
         
-        # 定义命令映射表
-        self.commands = {
-            # 应用控制命令
+        # 加载快捷键配置
+        self.shortcut_config = ShortcutConfig()
+        
+        # 定义需要特殊处理的命令
+        self.special_commands = {
             "退出": self.exit_app,
             "关闭": self.exit_app,
             "停止": self.stop_recognition,
             "暂停": self.stop_recognition,
             "结束": self.exit_app,
-            
-            # 系统操作命令
-            "刷新": self.refresh,
-            "复制": self.copy,
-            "粘贴": self.paste,
-            "剪切": self.cut,
-            "撤销": self.undo,
-            "重做": self.redo,
-            "保存": self.save,
-            "全选": self.select_all,
-            
-            # 测试命令
             "测试复制": self.test_copy_function,
-            
-            # 窗口操作命令
-            "最小化": self.minimize_window,
-            "最大化": self.maximize_window,
-            "关闭窗口": self.close_window,
-            "切换窗口": self.switch_window,
-            
-            # 浏览器操作命令
             "打开浏览器": self.open_browser,
-            "新建标签": self.new_tab,
-            "关闭标签": self.close_tab,
-            "刷新页面": self.refresh_page,
-            
-            # 文件操作命令
-            "打开文件": self.open_file,
-            "新建文件": self.new_file,
             "打开记事本": self.open_notepad,
             "打开计算器": self.open_calculator,
-            
-            # 音量控制命令
-            "增大音量": self.volume_up,
-            "减小音量": self.volume_down,
-            "静音": self.mute,
-            
-            # 屏幕截图命令
-            "截图": self.screenshot,
-            "截屏": self.screenshot,
         }
         
+        # 从配置动态构建所有可用命令
+        self.commands = {}
+        self.commands.update(self.special_commands)
+        for shortcut_info in self.shortcut_config.shortcuts:
+            command_name = shortcut_info['command']
+            if command_name not in self.commands:
+                # 对于非特殊命令，统一使用快捷键执行器
+                # 使用 lambda cmd=command_name: ... 来正确捕获 command_name
+                self.commands[command_name] = lambda cmd=command_name: self.execute_shortcut(cmd)
+
         # 命令同义词映射
         self.synonyms = {
             "退出应用": "退出",
@@ -175,38 +166,236 @@ class CommandProcessor:
             "屏幕截屏": "截图",
         }
     
-    def test_powershell_environment(self):
-        """测试PowerShell环境是否可用"""
-        try:
-            print("🔧 正在测试PowerShell环境...")
-            result = subprocess.run(
-                ["powershell", "-Command", "echo 'PowerShell测试成功'"], 
-                capture_output=True, text=True, timeout=10
-            )
+    def send_hotkey(self, *keys):
+        """
+        使用keyboard库发送快捷键
+        
+        Args:
+            *keys: 按键序列，例如 'ctrl', 'c' 或 'alt', 'f4'
             
-            if result.returncode == 0:
-                print("✅ PowerShell环境测试成功")
-                return True
-            else:
-                print("❌ PowerShell环境测试失败")
-                print(f"返回码: {result.returncode}")
-                print(f"错误输出: {result.stderr}")
-                return False
-                
-        except subprocess.TimeoutExpired:
-            print("⏰ PowerShell环境测试超时")
+        Returns:
+            bool: 执行是否成功
+        """
+        if not self.keyboard_available:
+            print("❌ keyboard库不可用，无法发送快捷键")
             return False
-        except FileNotFoundError:
-            print("❌ PowerShell未找到，可能未安装或不在PATH中")
-            return False
+        
+        try:
+            # 使用keyboard.send发送组合键
+            hotkey_str = '+'.join(keys)
+            print(f"🎹 发送快捷键: {hotkey_str}")
+            keyboard.send(hotkey_str)
+            time.sleep(0.1)  # 小延迟确保按键被正确处理
+            return True
         except Exception as e:
-            print(f"❌ PowerShell环境测试异常: {e}")
+            print(f"❌ 发送快捷键失败 ({hotkey_str}): {e}")
             return False
     
+    def send_key(self, key):
+        """
+        发送单个按键
+        
+        Args:
+            key: 按键名称，例如 'f5', 'print screen'
+            
+        Returns:
+            bool: 执行是否成功
+        """
+        if not self.keyboard_available:
+            print("❌ keyboard库不可用，无法发送按键")
+            return False
+        
+        try:
+            print(f"🎹 发送按键: {key}")
+            keyboard.send(key)
+            time.sleep(0.1)  # 小延迟确保按键被正确处理
+            return True
+        except Exception as e:
+            print(f"❌ 发送按键失败 ({key}): {e}")
+            return False
+    
+    def execute_shortcut(self, command):
+        """
+        执行命令对应的快捷键
+        
+        Args:
+            command: 命令名称
+            
+        Returns:
+            bool: 执行是否成功
+        """
+        shortcut = self.shortcut_config.get_shortcut(command)
+        if not shortcut:
+            print(f"❌ 未找到命令 '{command}' 的快捷键配置")
+            return False
+        
+        # 将快捷键字符串分割成按键列表
+        keys = shortcut.split('+')
+        # 区分是组合键还是单个功能键
+        if len(keys) > 1:
+            return self.send_hotkey(*keys)
+        else:
+            return self.send_key(keys[0])
+    
+    def print_available_commands(self):
+        """打印可用的语音命令和对应的快捷键"""
+        self.shortcut_config.print_shortcuts()
+    
+    # 修改所有使用快捷键的命令方法，使用新的配置系统
+    def refresh(self):
+        """刷新当前窗口/页面"""
+        return self.execute_shortcut("刷新")
+    
+    def copy(self):
+        """复制到剪贴板"""
+        return self.execute_shortcut("复制")
+    
+    def paste(self):
+        """从剪贴板粘贴"""
+        return self.execute_shortcut("粘贴")
+    
+    def cut(self):
+        """剪切到剪贴板"""
+        return self.execute_shortcut("剪切")
+    
+    def undo(self):
+        """撤销操作"""
+        return self.execute_shortcut("撤销")
+    
+    def redo(self):
+        """重做操作"""
+        return self.execute_shortcut("重做")
+    
+    def save(self):
+        """保存文件"""
+        return self.execute_shortcut("保存")
+    
+    def select_all(self):
+        """全选"""
+        return self.execute_shortcut("全选")
+    
+    def minimize_window(self):
+        """最小化当前窗口"""
+        return self.execute_shortcut("最小化")
+    
+    def maximize_window(self):
+        """最大化当前窗口"""
+        return self.execute_shortcut("最大化")
+    
+    def close_window(self):
+        """关闭当前窗口"""
+        return self.execute_shortcut("关闭窗口")
+    
+    def switch_window(self):
+        """切换窗口"""
+        return self.execute_shortcut("切换窗口")
+    
+    def new_tab(self):
+        """新建浏览器标签"""
+        return self.execute_shortcut("新建标签")
+    
+    def close_tab(self):
+        """关闭浏览器标签"""
+        return self.execute_shortcut("关闭标签")
+    
+    def open_file(self):
+        """打开文件对话框"""
+        return self.execute_shortcut("打开文件")
+    
+    def new_file(self):
+        """新建文件"""
+        return self.execute_shortcut("新建文件")
+    
+    def volume_up(self):
+        """增大音量"""
+        return self.execute_shortcut("增大音量")
+    
+    def volume_down(self):
+        """减小音量"""
+        return self.execute_shortcut("减小音量")
+    
+    def mute(self):
+        """静音/取消静音"""
+        return self.execute_shortcut("静音")
+    
+    def screenshot(self):
+        """屏幕截图"""
+        return self.execute_shortcut("截图")
+    
+    def open_browser(self):
+        """打开默认浏览器"""
+        try:
+            webbrowser.open('about:blank')
+            print("🌐 已打开浏览器")
+            return True
+        except Exception as e:
+            print(f"❌ 打开浏览器失败: {e}")
+            return False
+
+    def open_notepad(self):
+        """打开记事本"""
+        try:
+            subprocess.Popen(["notepad.exe"])
+            print("📝 已打开记事本")
+            return True
+        except Exception as e:
+            print(f"❌ 打开记事本失败: {e}")
+            return False
+
+    def open_calculator(self):
+        """打开计算器"""
+        try:
+            subprocess.Popen(["calc.exe"])
+            print("🧮 已打开计算器")
+            return True
+        except Exception as e:
+            print(f"❌ 打开计算器失败: {e}")
+            return False
+            
+    def test_copy_function(self):
+        """测试复制功能是否正常工作"""
+        print("🧪 测试复制功能...")
+        
+        # 获取复制前的剪贴板内容
+        before_copy = ""
+        if pyperclip:
+            try:
+                before_copy = pyperclip.paste()
+                print(f"📋 复制前剪贴板内容: '{before_copy[:50]}...' (仅显示前50字符)")
+            except Exception as e:
+                print(f"⚠️ 无法读取剪贴板: {e}")
+        
+        # 执行复制命令
+        success = self.copy()
+        
+        if not success:
+            print("❌ 复制命令执行失败")
+            return False
+        
+        # 检查复制后的剪贴板内容
+        if pyperclip:
+            try:
+                time.sleep(0.2)  # 等待复制完成
+                after_copy = pyperclip.paste()
+                print(f"📋 复制后剪贴板内容: '{after_copy[:50]}...' (仅显示前50字符)")
+                
+                if before_copy != after_copy:
+                    print("✅ 复制功能测试成功！剪贴板内容已改变")
+                    return True
+                else:
+                    print("⚠️ 复制命令执行了，但剪贴板内容没有改变")
+                    print("💡 可能原因：没有选中文本，或当前应用不支持复制")
+                    return False
+            except Exception as e:
+                print(f"⚠️ 无法验证剪贴板变化: {e}")
+        
+        print("⚠️ 无法检查剪贴板内容，假设复制成功")
+        return True
+
     def similarity(self, a, b):
         """计算两个字符串的相似度"""
         return SequenceMatcher(None, a, b).ratio()
-    
+
     def find_command(self, text):
         """
         从识别文本中查找匹配的命令
@@ -219,8 +408,11 @@ class CommandProcessor:
         """
         text = text.strip().lower()
         
+        # 使用 self.commands 的键作为完整的命令列表
+        all_commands = list(self.commands.keys())
+        
         # 1. 精确匹配
-        for cmd in self.commands:
+        for cmd in all_commands:
             if cmd in text:
                 return cmd
         
@@ -230,37 +422,36 @@ class CommandProcessor:
                 return cmd
         
         # 3. 开头匹配（针对像"刷新新"这样的情况）
-        for cmd in self.commands:
-            if text.startswith(cmd) or cmd in text:
+        for cmd in all_commands:
+            if text.startswith(cmd):
                 return cmd
         
         # 4. 模糊匹配（相似度阈值设为0.6）
         best_match = None
-        best_score = 0.6  # 最低相似度阈值
+        best_score = 0.6
         
-        for cmd in self.commands:
+        for cmd in all_commands:
             score = self.similarity(text, cmd)
             if score > best_score:
                 best_score = score
                 best_match = cmd
         
         # 5. 检查同义词的模糊匹配
-        for synonym in self.synonyms:
+        for synonym, cmd_target in self.synonyms.items():
             score = self.similarity(text, synonym)
             if score > best_score:
                 best_score = score
-                best_match = self.synonyms[synonym]
+                best_match = cmd_target
         
-        # 6. 容错匹配：去除文本末尾可能的误识别字符
+        # 6. 容错匹配
         if not best_match and len(text) > 2:
-            # 尝试去掉最后一个字符再匹配
             truncated_text = text[:-1]
-            for cmd in self.commands:
+            for cmd in all_commands:
                 if cmd == truncated_text or cmd in truncated_text:
                     return cmd
         
         return best_match
-    
+
     def execute_command(self, command_name):
         """
         执行指定的命令
@@ -273,20 +464,8 @@ class CommandProcessor:
         """
         if command_name in self.commands:
             try:
-                # 检查是否需要PowerShell的命令
-                powershell_commands = [
-                    "刷新", "复制", "粘贴", "剪切", "撤销", "重做", "保存", "全选",
-                    "最小化", "最大化", "关闭窗口", "切换窗口", "新建标签", "关闭标签",
-                    "打开文件", "新建文件", "增大音量", "减小音量", "静音", "截图"
-                ]
-                # 注意：测试复制命令不在此列表中，因为它有自己的错误处理
-                
-                if command_name in powershell_commands and not self.powershell_available:
-                    print(f"❌ 命令 '{command_name}' 需要PowerShell支持，但PowerShell不可用")
-                    print("💡 请检查PowerShell是否正确安装并可以正常执行")
-                    return False
-                
                 print(f"🔧 执行命令: {command_name}")
+                # 调用在 __init__ 中映射好的方法
                 result = self.commands[command_name]()
                 return result if result is not None else True
             except Exception as e:
@@ -295,7 +474,7 @@ class CommandProcessor:
         else:
             print(f"❌ 未知命令: {command_name}")
             return False
-    
+
     def process_text(self, text):
         """
         处理识别文本，查找并执行命令
@@ -306,13 +485,11 @@ class CommandProcessor:
         Returns:
             bool: 是否找到并执行了命令
         """
-        # 检查文本是否重复（避免流式识别中的重复结果）
         if self.is_text_repeated(text):
             return False
         
         command = self.find_command(text)
         if command:
-            # 检查命令冷却
             if self.is_command_in_cooldown(command):
                 print(f"⏰ 命令 '{command}' 正在冷却中，请稍后再试")
                 return False
@@ -321,727 +498,32 @@ class CommandProcessor:
             result = self.execute_command(command)
             
             if result:
-                # 更新最后执行的命令和时间
                 self.last_command = command
                 self.last_command_time = time.time()
                 self.last_recognized_text = text
             
             return result
         return False
-    
+
     def is_text_repeated(self, text):
         """检查文本是否与最近识别的文本重复"""
         if not self.last_recognized_text:
             return False
-        
-        # 计算与最后识别文本的相似度
         similarity = self.similarity(text.lower().strip(), self.last_recognized_text.lower().strip())
         return similarity > self.text_repeat_threshold
-    
+
     def is_command_in_cooldown(self, command):
         """检查命令是否在冷却期内"""
-        if not self.last_command or self.last_command != command:
+        if self.last_command != command:
             return False
-        
         current_time = time.time()
-        time_since_last = current_time - self.last_command_time
-        return time_since_last < self.command_cooldown
-    
+        return (current_time - self.last_command_time) < self.command_cooldown
+
     def reset_command_state(self):
         """重置命令执行状态"""
         self.last_command = None
         self.last_command_time = 0
         self.last_recognized_text = ""
-    
-    # ===== 应用控制命令 =====
-    def exit_app(self):
-        """退出应用"""
-        print("👋 正在退出应用...")
-        if self.app:
-            self.app.stop_recognition()
-        os._exit(0)
-    
-    def stop_recognition(self):
-        """停止语音识别"""
-        print("🛑 停止语音识别")
-        if self.app:
-            self.app.stop_recognition()
-        return True
-    
-    # ===== 系统操作命令 =====
-    def refresh(self):
-        """刷新当前窗口/页面"""
-        try:
-            result = subprocess.run(
-                ["powershell", "-Command", "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{F5}')"], 
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                print("🔄 已发送刷新命令")
-                return True
-            else:
-                print(f"❌ 刷新命令执行失败，返回码: {result.returncode}")
-                print(f"错误输出: {result.stderr}")
-                return False
-        except subprocess.TimeoutExpired:
-            print("⏰ 刷新命令执行超时")
-            return False
-        except Exception as e:
-            print(f"❌ 刷新失败: {e}")
-            return False
-    
-    def copy(self):
-        """复制到剪贴板"""
-        try:
-            print("🔧 开始执行复制命令...")
-            
-            # 方案1：使用更可靠的按键发送方法（避免KeyboardInterrupt）
-            try:
-                import win32api
-                import win32con
-                import time
-                
-                print("🔧 使用win32api发送按键序列...")
-                
-                # 确保有足够的延迟，让按键被正确处理
-                # 按下Ctrl键
-                win32api.keybd_event(win32con.VK_CONTROL, 0, 0, 0)
-                time.sleep(0.05)  # 50ms延迟
-                
-                # 按下C键
-                win32api.keybd_event(ord('C'), 0, 0, 0)
-                time.sleep(0.05)  # 50ms延迟
-                
-                # 释放C键
-                win32api.keybd_event(ord('C'), 0, win32con.KEYEVENTF_KEYUP, 0)
-                time.sleep(0.05)  # 50ms延迟
-                
-                # 释放Ctrl键
-                win32api.keybd_event(win32con.VK_CONTROL, 0, win32con.KEYEVENTF_KEYUP, 0)
-                time.sleep(0.1)  # 100ms延迟确保按键处理完成
-                
-                print("📋 已发送复制命令 (win32api按键)")
-                return True
-                
-            except ImportError:
-                print("⚠️ win32api不可用，尝试备用方案...")
-            except Exception as e:
-                print(f"⚠️ win32api方案失败: {e}")
-            
-            # 方案2：使用修正的PowerShell SendKeys
-            try:
-                print("🔧 使用PowerShell SendKeys...")
-                result = subprocess.run([
-                    "powershell", "-ExecutionPolicy", "Bypass", "-Command", 
-                    "Add-Type -AssemblyName System.Windows.Forms; "
-                    "Start-Sleep -Milliseconds 100; "
-                    "[System.Windows.Forms.SendKeys]::SendWait('{CTRL down}c{CTRL up}'); "
-                    "Start-Sleep -Milliseconds 100"
-                ], capture_output=True, text=True, timeout=10)
-                
-                print(f"🔧 PowerShell命令执行完成，返回码: {result.returncode}")
-                
-                if result.returncode == 0:
-                    print("📋 已发送复制命令 (PowerShell SendKeys)")
-                    return True
-                else:
-                    print(f"❌ PowerShell方案失败，返回码: {result.returncode}")
-                    if result.stderr:
-                        print(f"错误输出: {result.stderr}")
-                    
-            except Exception as e:
-                print(f"❌ PowerShell方案异常: {e}")
-            
-            # 方案3：使用VBScript发送按键
-            try:
-                print("🔧 使用VBScript发送按键...")
-                
-                # 创建临时VBScript文件
-                vbs_content = '''
-                Set WshShell = WScript.CreateObject("WScript.Shell")
-                WScript.Sleep 100
-                WshShell.SendKeys "^c"
-                WScript.Sleep 100
-                '''
-                
-                import tempfile
-                import os
-                
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.vbs', delete=False) as vbs_file:
-                    vbs_file.write(vbs_content)
-                    vbs_path = vbs_file.name
-                
-                try:
-                    result = subprocess.run([
-                        "cscript", "//NoLogo", vbs_path
-                    ], capture_output=True, text=True, timeout=10)
-                    
-                    if result.returncode == 0:
-                        print("📋 已发送复制命令 (VBScript)")
-                        return True
-                    else:
-                        print(f"❌ VBScript方案失败，返回码: {result.returncode}")
-                        
-                finally:
-                    # 清理临时文件
-                    try:
-                        os.unlink(vbs_path)
-                    except:
-                        pass
-                    
-            except Exception as e:
-                print(f"❌ VBScript方案异常: {e}")
-            
-            # 方案4：使用pyautogui（如果可用）
-            try:
-                import pyautogui
-                print("🔧 使用pyautogui发送按键...")
-                
-                # 设置延迟
-                pyautogui.PAUSE = 0.1
-                
-                # 发送Ctrl+C
-                pyautogui.hotkey('ctrl', 'c')
-                
-                print("📋 已发送复制命令 (pyautogui)")
-                return True
-                
-            except ImportError:
-                print("⚠️ pyautogui不可用")
-            except Exception as e:
-                print(f"❌ pyautogui方案异常: {e}")
-            
-            # 方案5：通过模拟菜单操作
-            try:
-                print("🔧 使用模拟右键菜单...")
-                result = subprocess.run([
-                    "powershell", "-ExecutionPolicy", "Bypass", "-Command", 
-                    "Add-Type -AssemblyName System.Windows.Forms; "
-                    "[System.Windows.Forms.SendKeys]::SendWait('+{F10}'); "  # Shift+F10打开右键菜单
-                    "Start-Sleep -Milliseconds 300; "
-                    "[System.Windows.Forms.SendKeys]::SendWait('c'); "       # 按C选择复制
-                    "Start-Sleep -Milliseconds 100"
-                ], capture_output=True, text=True, timeout=10)
-                
-                if result.returncode == 0:
-                    print("📋 已发送复制命令 (右键菜单)")
-                    return True
-                else:
-                    print(f"❌ 右键菜单方案失败")
-                    
-            except Exception as e:
-                print(f"❌ 右键菜单方案异常: {e}")
-            
-            print("❌ 所有复制方案都失败了")
-            print("💡 请确保：")
-            print("   1. 当前有应用处于前台且有选中的文本")
-            print("   2. 前台应用支持Ctrl+C复制操作")
-            print("   3. 系统没有阻止键盘模拟操作")
-            return False
-                        
-        except Exception as e:
-            print(f"❌ 复制失败: {e}")
-            print(f"异常类型: {type(e).__name__}")
-            import traceback
-            print(f"异常堆栈: {traceback.format_exc()}")
-            return False
-    
-    def paste(self):
-        """从剪贴板粘贴"""
-        try:
-            result = subprocess.run(
-                ["powershell", "-Command", "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^v')"], 
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                print("📋 已发送粘贴命令")
-                return True
-            else:
-                print(f"❌ 粘贴命令执行失败，返回码: {result.returncode}")
-                print(f"错误输出: {result.stderr}")
-                return False
-        except subprocess.TimeoutExpired:
-            print("⏰ 粘贴命令执行超时")
-            return False
-        except Exception as e:
-            print(f"❌ 粘贴失败: {e}")
-            return False
-    
-    def cut(self):
-        """剪切到剪贴板"""
-        try:
-            result = subprocess.run(
-                ["powershell", "-Command", "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^x')"], 
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                print("✂️ 已发送剪切命令")
-                return True
-            else:
-                print(f"❌ 剪切命令执行失败，返回码: {result.returncode}")
-                print(f"错误输出: {result.stderr}")
-                return False
-        except subprocess.TimeoutExpired:
-            print("⏰ 剪切命令执行超时")
-            return False
-        except Exception as e:
-            print(f"❌ 剪切失败: {e}")
-            return False
-    
-    def undo(self):
-        """撤销操作"""
-        try:
-            result = subprocess.run(
-                ["powershell", "-Command", "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^z')"], 
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                print("↶ 已发送撤销命令")
-                return True
-            else:
-                print(f"❌ 撤销命令执行失败，返回码: {result.returncode}")
-                print(f"错误输出: {result.stderr}")
-                return False
-        except subprocess.TimeoutExpired:
-            print("⏰ 撤销命令执行超时")
-            return False
-        except Exception as e:
-            print(f"❌ 撤销失败: {e}")
-            return False
-    
-    def redo(self):
-        """重做操作"""
-        try:
-            result = subprocess.run(
-                ["powershell", "-Command", "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^y')"], 
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                print("↷ 已发送重做命令")
-                return True
-            else:
-                print(f"❌ 重做命令执行失败，返回码: {result.returncode}")
-                print(f"错误输出: {result.stderr}")
-                return False
-        except subprocess.TimeoutExpired:
-            print("⏰ 重做命令执行超时")
-            return False
-        except Exception as e:
-            print(f"❌ 重做失败: {e}")
-            return False
-    
-    def save(self):
-        """保存文件"""
-        try:
-            result = subprocess.run(
-                ["powershell", "-Command", "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^s')"], 
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                print("💾 已发送保存命令")
-                return True
-            else:
-                print(f"❌ 保存命令执行失败，返回码: {result.returncode}")
-                print(f"错误输出: {result.stderr}")
-                return False
-        except subprocess.TimeoutExpired:
-            print("⏰ 保存命令执行超时")
-            return False
-        except Exception as e:
-            print(f"❌ 保存失败: {e}")
-            return False
-    
-    def select_all(self):
-        """全选"""
-        try:
-            result = subprocess.run(
-                ["powershell", "-Command", "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^a')"], 
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                print("🔘 已发送全选命令")
-                return True
-            else:
-                print(f"❌ 全选命令执行失败，返回码: {result.returncode}")
-                print(f"错误输出: {result.stderr}")
-                return False
-        except subprocess.TimeoutExpired:
-            print("⏰ 全选命令执行超时")
-            return False
-        except Exception as e:
-            print(f"❌ 全选失败: {e}")
-            return False
-    
-    # ===== 窗口操作命令 =====
-    def minimize_window(self):
-        """最小化当前窗口"""
-        try:
-            result = subprocess.run(
-                ["powershell", "-Command", "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('% n')"], 
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                print("🗗 已发送最小化命令")
-                return True
-            else:
-                print(f"❌ 最小化命令执行失败，返回码: {result.returncode}")
-                print(f"错误输出: {result.stderr}")
-                return False
-        except subprocess.TimeoutExpired:
-            print("⏰ 最小化命令执行超时")
-            return False
-        except Exception as e:
-            print(f"❌ 最小化失败: {e}")
-            return False
-    
-    def maximize_window(self):
-        """最大化当前窗口"""
-        try:
-            result = subprocess.run(
-                ["powershell", "-Command", "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('% x')"], 
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                print("🗖 已发送最大化命令")
-                return True
-            else:
-                print(f"❌ 最大化命令执行失败，返回码: {result.returncode}")
-                print(f"错误输出: {result.stderr}")
-                return False
-        except subprocess.TimeoutExpired:
-            print("⏰ 最大化命令执行超时")
-            return False
-        except Exception as e:
-            print(f"❌ 最大化失败: {e}")
-            return False
-    
-    def close_window(self):
-        """关闭当前窗口"""
-        try:
-            result = subprocess.run(
-                ["powershell", "-Command", "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('%{F4}')"], 
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                print("❌ 已发送关闭窗口命令")
-                return True
-            else:
-                print(f"❌ 关闭窗口命令执行失败，返回码: {result.returncode}")
-                print(f"错误输出: {result.stderr}")
-                return False
-        except subprocess.TimeoutExpired:
-            print("⏰ 关闭窗口命令执行超时")
-            return False
-        except Exception as e:
-            print(f"❌ 关闭窗口失败: {e}")
-            return False
-    
-    def switch_window(self):
-        """切换窗口"""
-        try:
-            result = subprocess.run(
-                ["powershell", "-Command", "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('%{TAB}')"], 
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                print("🔄 已发送切换窗口命令")
-                return True
-            else:
-                print(f"❌ 切换窗口命令执行失败，返回码: {result.returncode}")
-                print(f"错误输出: {result.stderr}")
-                return False
-        except subprocess.TimeoutExpired:
-            print("⏰ 切换窗口命令执行超时")
-            return False
-        except Exception as e:
-            print(f"❌ 切换窗口失败: {e}")
-            return False
-    
-    # ===== 浏览器操作命令 =====
-    def open_browser(self):
-        """打开默认浏览器"""
-        try:
-            webbrowser.open('about:blank')
-            print("🌐 已打开浏览器")
-            return True
-        except Exception as e:
-            print(f"❌ 打开浏览器失败: {e}")
-            return False
-    
-    def new_tab(self):
-        """新建浏览器标签"""
-        try:
-            result = subprocess.run(
-                ["powershell", "-Command", "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^t')"], 
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                print("🗂️ 已发送新建标签命令")
-                return True
-            else:
-                print(f"❌ 新建标签命令执行失败，返回码: {result.returncode}")
-                print(f"错误输出: {result.stderr}")
-                return False
-        except subprocess.TimeoutExpired:
-            print("⏰ 新建标签命令执行超时")
-            return False
-        except Exception as e:
-            print(f"❌ 新建标签失败: {e}")
-            return False
-    
-    def close_tab(self):
-        """关闭浏览器标签"""
-        try:
-            result = subprocess.run(
-                ["powershell", "-Command", "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^w')"], 
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                print("❌ 已发送关闭标签命令")
-                return True
-            else:
-                print(f"❌ 关闭标签命令执行失败，返回码: {result.returncode}")
-                print(f"错误输出: {result.stderr}")
-                return False
-        except subprocess.TimeoutExpired:
-            print("⏰ 关闭标签命令执行超时")
-            return False
-        except Exception as e:
-            print(f"❌ 关闭标签失败: {e}")
-            return False
-    
-    def refresh_page(self):
-        """刷新页面"""
-        return self.refresh()
-    
-    # ===== 文件操作命令 =====
-    def open_file(self):
-        """打开文件对话框"""
-        try:
-            result = subprocess.run(
-                ["powershell", "-Command", "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^o')"], 
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                print("📁 已发送打开文件命令")
-                return True
-            else:
-                print(f"❌ 打开文件命令执行失败，返回码: {result.returncode}")
-                print(f"错误输出: {result.stderr}")
-                return False
-        except subprocess.TimeoutExpired:
-            print("⏰ 打开文件命令执行超时")
-            return False
-        except Exception as e:
-            print(f"❌ 打开文件失败: {e}")
-            return False
-    
-    def new_file(self):
-        """新建文件"""
-        try:
-            result = subprocess.run(
-                ["powershell", "-Command", "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^n')"], 
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                print("📄 已发送新建文件命令")
-                return True
-            else:
-                print(f"❌ 新建文件命令执行失败，返回码: {result.returncode}")
-                print(f"错误输出: {result.stderr}")
-                return False
-        except subprocess.TimeoutExpired:
-            print("⏰ 新建文件命令执行超时")
-            return False
-        except Exception as e:
-            print(f"❌ 新建文件失败: {e}")
-            return False
-    
-    def open_notepad(self):
-        """打开记事本"""
-        try:
-            subprocess.Popen(["notepad.exe"])
-            print("📝 已打开记事本")
-            return True
-        except Exception as e:
-            print(f"❌ 打开记事本失败: {e}")
-            return False
-    
-    def open_calculator(self):
-        """打开计算器"""
-        try:
-            subprocess.Popen(["calc.exe"])
-            print("🧮 已打开计算器")
-            return True
-        except Exception as e:
-            print(f"❌ 打开计算器失败: {e}")
-            return False
-    
-    # ===== 音量控制命令 =====
-    def volume_up(self):
-        """增大音量"""
-        try:
-            result = subprocess.run(
-                ["powershell", "-Command", "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{VOLUME_UP}')"], 
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                print("🔊 已增大音量")
-                return True
-            else:
-                print(f"❌ 增大音量命令执行失败，返回码: {result.returncode}")
-                print(f"错误输出: {result.stderr}")
-                return False
-        except subprocess.TimeoutExpired:
-            print("⏰ 增大音量命令执行超时")
-            return False
-        except Exception as e:
-            print(f"❌ 增大音量失败: {e}")
-            return False
-    
-    def volume_down(self):
-        """减小音量"""
-        try:
-            result = subprocess.run(
-                ["powershell", "-Command", "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{VOLUME_DOWN}')"], 
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                print("🔉 已减小音量")
-                return True
-            else:
-                print(f"❌ 减小音量命令执行失败，返回码: {result.returncode}")
-                print(f"错误输出: {result.stderr}")
-                return False
-        except subprocess.TimeoutExpired:
-            print("⏰ 减小音量命令执行超时")
-            return False
-        except Exception as e:
-            print(f"❌ 减小音量失败: {e}")
-            return False
-    
-    def mute(self):
-        """静音/取消静音"""
-        try:
-            result = subprocess.run(
-                ["powershell", "-Command", "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{VOLUME_MUTE}')"], 
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                print("🔇 已切换静音状态")
-                return True
-            else:
-                print(f"❌ 静音命令执行失败，返回码: {result.returncode}")
-                print(f"错误输出: {result.stderr}")
-                return False
-        except subprocess.TimeoutExpired:
-            print("⏰ 静音命令执行超时")
-            return False
-        except Exception as e:
-            print(f"❌ 静音操作失败: {e}")
-            return False
-    
-    # ===== 屏幕截图命令 =====
-    def screenshot(self):
-        """屏幕截图"""
-        try:
-            result = subprocess.run(
-                ["powershell", "-Command", "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{PRTSC}')"], 
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                print("📸 已截取屏幕")
-                return True
-            else:
-                print(f"❌ 截图命令执行失败，返回码: {result.returncode}")
-                print(f"错误输出: {result.stderr}")
-                return False
-        except subprocess.TimeoutExpired:
-            print("⏰ 截图命令执行超时")
-            return False
-        except Exception as e:
-            print(f"❌ 截图失败: {e}")
-            return False
-    
-    def test_copy_function(self):
-        """测试复制功能是否正常工作"""
-        try:
-            print("🧪 测试复制功能...")
-            
-            # 方法1：尝试使用pyperclip检查剪贴板
-            if pyperclip:
-                try:
-                    before_copy = pyperclip.paste()
-                    print(f"📋 复制前剪贴板内容: '{before_copy[:50]}...' (仅显示前50字符)")
-                    
-                    # 执行复制
-                    success = self.copy()
-                    
-                    if success:
-                        time.sleep(0.2)  # 等待复制完成
-                        after_copy = pyperclip.paste()
-                        print(f"📋 复制后剪贴板内容: '{after_copy[:50]}...' (仅显示前50字符)")
-                        
-                        if before_copy != after_copy:
-                            print("✅ 复制功能测试成功！剪贴板内容已改变")
-                            return True
-                        else:
-                            print("⚠️ 复制命令执行了，但剪贴板内容没有改变")
-                            print("💡 可能原因：没有选中文本，或当前应用不支持复制")
-                            return False
-                    else:
-                        print("❌ 复制命令执行失败")
-                        return False
-                        
-                except Exception as e:
-                    print(f"❌ pyperclip测试失败: {e}")
-            
-            # 方法2：使用Windows API检查剪贴板
-            try:
-                import win32clipboard
-                print("🔧 使用win32clipboard检查剪贴板...")
-                
-                win32clipboard.OpenClipboard()
-                try:
-                    before_copy = win32clipboard.GetClipboardData(win32clipboard.CF_TEXT) if win32clipboard.IsClipboardFormatAvailable(win32clipboard.CF_TEXT) else ""
-                finally:
-                    win32clipboard.CloseClipboard()
-                
-                print(f"📋 复制前剪贴板内容: '{before_copy[:50] if before_copy else '(空)'}...'")
-                
-                # 执行复制
-                success = self.copy()
-                
-                if success:
-                    time.sleep(0.2)  # 等待复制完成
-                    
-                    win32clipboard.OpenClipboard()
-                    try:
-                        after_copy = win32clipboard.GetClipboardData(win32clipboard.CF_TEXT) if win32clipboard.IsClipboardFormatAvailable(win32clipboard.CF_TEXT) else ""
-                    finally:
-                        win32clipboard.CloseClipboard()
-                    
-                    print(f"📋 复制后剪贴板内容: '{after_copy[:50] if after_copy else '(空)'}...'")
-                    
-                    if before_copy != after_copy:
-                        print("✅ 复制功能测试成功！剪贴板内容已改变")
-                        return True
-                    else:
-                        print("⚠️ 复制命令执行了，但剪贴板内容没有改变")
-                        return False
-                        
-            except ImportError:
-                print("⚠️ win32clipboard不可用")
-            except Exception as e:
-                print(f"❌ win32clipboard测试失败: {e}")
-            
-            # 如果没有剪贴板检查工具，只能假设复制成功
-            print("⚠️ 无法检查剪贴板内容，假设复制成功")
-            return self.copy()
-            
-        except Exception as e:
-            print(f"❌ 测试复制功能失败: {e}")
-            return False
 
 
 class SimpleVAD:
@@ -1425,6 +907,7 @@ class VoiceRecognitionApp:
             print("🛡️ 已启用命令防重复机制，相同命令间隔2秒执行")
             print("🔧 VAD优化：动态阈值 + 最小语音长度检测")
             print("🚫 识别结果去重：避免重复输出相同结果")
+            print("⌨️ 使用keyboard库进行键盘模拟，更稳定可靠")
             self.print_available_commands()
         return True
     
@@ -1510,6 +993,7 @@ def main():
     print("🎯 集成智能语音命令识别系统")
     print("🚫 多层去重机制：彻底解决重复识别问题")
     print("🔧 智能命令匹配：容错识别不准确的结果")
+    print("⌨️ 使用keyboard库重写命令系统，简洁稳定")
     print("💡 确保在安静环境中使用，说话清晰完整")
     
     # 可以设置上下文关键词提高识别准确率

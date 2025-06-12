@@ -2,7 +2,7 @@
 
 # ======== Core Dependencies ========
 # Numerical computing and array processing
-numpy==1.26.3
+numpy>=1.19.0
 
 # PyTorch deep learning framework
 torch<=2.3
@@ -22,10 +22,10 @@ pysilero
 
 # ======== Audio Processing ========
 # Audio device interface
-sounddevice
+sounddevice>=0.4.0
 
 # Audio file I/O
-soundfile
+soundfile>=0.10.0
 
 # Audio format conversion
 pydub
@@ -45,7 +45,10 @@ accelerate
 
 # ======== System Utilities ========
 # Clipboard operations
-pyperclip
+pyperclip>=1.8.0
+
+# Keyboard and mouse automation
+keyboard>=0.13.5
 
 # Package management and version control
 packaging
@@ -69,3 +72,5 @@ idna
 # - jupyter: Jupyter Notebook support
 # - matplotlib: Data visualization
 # - scipy: Scientific computing library
+
+pyyaml>=6.0.1
