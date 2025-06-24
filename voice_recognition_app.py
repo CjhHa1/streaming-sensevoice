@@ -17,15 +17,16 @@ import os
 import webbrowser
 from difflib import SequenceMatcher
 from shortcut_config import ShortcutConfig
-
 # 尝试导入pyperclip，如果失败则使用备用方案
+
 try:
     import pyperclip
 except ImportError:
     print("⚠️ pyperclip未安装，剪贴板功能将使用系统命令")
     pyperclip = None
-
+    
 # 导入keyboard库用于键盘模拟
+
 try:
     import keyboard
     print("✅ keyboard库已导入，将使用键盘模拟进行命令执行")

@@ -99,3 +99,7 @@ shortcuts:
   - command: "截图"
     keys: "print screen"
     description: "截取屏幕"
+
+  - command: "战斗"
+    keys: "ctrlqweoqhweuihon"
+    description: "战斗"
