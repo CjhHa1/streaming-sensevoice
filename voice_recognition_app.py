@@ -385,9 +385,24 @@ class CommandProcessor:
         if command_name in self.commands:
             try:
                 print(f"🔧 执行命令: {command_name}")
-                # 调用在 __init__ 中映射好的方法
-                result = self.commands[command_name]()
-                return result if result is not None else True
+                
+                # 使用线程执行命令，避免阻塞语音识别
+                def execute_in_thread():
+                    try:
+                        result = self.commands[command_name]()
+                        return result if result is not None else True
+                    except Exception as e:
+                        print(f"❌ 命令执行失败: {e}")
+                        return False
+                
+                # 创建并启动命令执行线程
+                command_thread = threading.Thread(target=execute_in_thread, daemon=True)
+                command_thread.start()
+                
+                # 不等待线程完成，立即返回成功
+                # 这样可以避免阻塞语音识别
+                return True
+                
             except Exception as e:
                 print(f"❌ 命令执行失败: {e}")
                 return False
@@ -464,7 +479,7 @@ class CommandProcessor:
 class SimpleVAD:
     """改进的音量检测VAD，避免重复识别问题"""
     
-    def __init__(self, threshold=0.02, speech_pad_ms=500, min_speech_ms=300):
+    def __init__(self, threshold=0.02, speech_pad_ms=300, min_speech_ms=150):
         self.threshold = threshold
         self.speech_pad_samples = int(speech_pad_ms * 16000 / 1000)  # 静音填充长度
         self.min_speech_samples = int(min_speech_ms * 16000 / 1000)  # 最小语音长度
@@ -475,6 +490,11 @@ class SimpleVAD:
         self.last_energy = 0
         self.energy_history = []
         self.energy_history_length = 10  # 保留最近10帧的能量历史
+        
+        # 新增：短语音检测参数
+        self.short_speech_threshold = 0.8  # 短语音能量阈值（更敏感）
+        self.max_silence_gap = int(200 * 16000 / 1000)  # 最大静音间隔（200ms）
+        self.continuous_speech_buffer = []  # 连续语音缓冲区
         
     def _calculate_energy(self, audio_chunk):
         """计算音频能量，使用RMS方法"""
@@ -490,6 +510,16 @@ class SimpleVAD:
             dynamic_threshold = self.threshold
         
         return energy > dynamic_threshold
+    
+    def _is_short_speech_energy(self, energy):
+        """判断是否为短语音能量（更敏感的阈值）"""
+        if len(self.energy_history) > 3:
+            energy_std = np.std(self.energy_history)
+            short_threshold = max(self.short_speech_threshold, self.short_speech_threshold + energy_std * 0.3)
+        else:
+            short_threshold = self.short_speech_threshold
+        
+        return energy > short_threshold
         
     def __call__(self, audio_chunk):
         """处理音频块并返回语音段"""
@@ -502,12 +532,14 @@ class SimpleVAD:
             self.energy_history.pop(0)
         
         is_voice = self._is_speech_energy(energy)
+        is_short_voice = self._is_short_speech_energy(energy)
         
-        if is_voice:
+        if is_voice or is_short_voice:
             if not self.is_speech:
                 # 语音开始
                 self.is_speech = True
                 self.speech_buffer = []
+                self.continuous_speech_buffer = []
                 self.silence_counter = 0
                 self.speech_start_time = time.time()
                 print(f"🎤 语音开始 (能量: {energy:.4f}, 阈值: {self.threshold:.4f})")
@@ -515,8 +547,8 @@ class SimpleVAD:
             
             # 添加到语音缓冲区
             self.speech_buffer.extend(audio_chunk)
+            self.continuous_speech_buffer.extend(audio_chunk)
             self.silence_counter = 0
-            # 不在语音过程中输出中间结果，避免重复处理
             
         else:  # 静音
             if self.is_speech:
@@ -525,23 +557,36 @@ class SimpleVAD:
                 
                 # 检查是否应该结束语音
                 speech_duration = len(self.speech_buffer) / 16000.0 * 1000  # 转换为毫秒
+                continuous_speech_duration = len(self.continuous_speech_buffer) / 16000.0 * 1000
+                
+                # 改进的结束条件：
+                # 1. 标准条件：静音足够长且语音足够长
+                # 2. 短语音条件：即使语音很短，如果能量足够高也处理
+                should_end = False
                 
                 if (self.silence_counter >= self.speech_pad_samples and 
                     speech_duration >= self.min_speech_samples / 16000.0 * 1000):
+                    should_end = True
+                elif (self.silence_counter >= self.max_silence_gap and 
+                      continuous_speech_duration >= 100):  # 至少100ms的连续语音
+                    should_end = True
+                
+                if should_end:
                     # 语音结束
                     self.is_speech = False
                     speech_data = np.array(self.speech_buffer)
                     
-                    print(f"🎤 语音结束 (时长: {speech_duration:.1f}ms, 样本: {len(speech_data)})")
+                    print(f"🎤 语音结束 (总时长: {speech_duration:.1f}ms, 连续语音: {continuous_speech_duration:.1f}ms, 样本: {len(speech_data)})")
                     
                     # 清理缓冲区，防止重复
                     self.speech_buffer = []
+                    self.continuous_speech_buffer = []
                     self.silence_counter = 0
                     
                     yield {"end": True}, speech_data
                     
                     # 语音结束后，添加一个短暂的静默期，避免立即重新触发
-                    time.sleep(0.1)
+                    time.sleep(0.05)  # 减少静默期，提高响应速度
         
         self.last_energy = energy
 
@@ -659,9 +704,14 @@ class VoiceRecognitionApp:
             # 初始化语音识别模型
             self.model = StreamingSenseVoice(contexts=self.contexts, model=self.model_path)
             
-            # 初始化改进的VAD
+            # 初始化改进的VAD，使用更适合短文本的参数
             print("✅ 使用改进的音量检测VAD")
-            self.vad = SimpleVAD(threshold=0.02, speech_pad_ms=500, min_speech_ms=300)
+            print("🔧 VAD参数优化: 最小语音150ms, 静音填充300ms, 短语音检测启用")
+            self.vad = SimpleVAD(
+                threshold=0.02, 
+                speech_pad_ms=300,  # 减少静音填充时间
+                min_speech_ms=150   # 减少最小语音长度
+            )
             
             print("✅ 模型初始化完成")
             return True
@@ -709,6 +759,7 @@ class VoiceRecognitionApp:
                 print("🎧 开始监听音频...")
                 print("💡 说话清晰一些，避免环境噪音干扰")
                 print("📊 当前VAD阈值: 0.02 (动态调整)")
+                print("🔧 短语音优化: 最小150ms, 静音填充300ms")
                 
                 while self.is_running:
                     try:
@@ -731,18 +782,24 @@ class VoiceRecognitionApp:
                                     print("🔄 正在处理语音...")
                                     # 进行语音识别，传入完整的语音段
                                     recognition_results = []
+                                    
+                                    # 改进：处理所有中间结果，不仅仅是最后一个
                                     for res in self.model.streaming_inference(speech_samples * 32768, is_last=True):
                                         if res["text"].strip():
                                             recognition_results.append(res)
                                     
-                                    # 只处理最后一个非空结果（最终结果）
+                                    # 处理所有非空结果，不仅仅是最后一个
                                     if recognition_results:
-                                        final_result = recognition_results[-1]
+                                        # 选择最长的识别结果作为最终结果（通常更准确）
+                                        final_result = max(recognition_results, key=lambda x: len(x["text"]))
                                         print(f"🗣️  识别结果: {final_result['text']}")
                                         print(f"⏱️  时间戳: {final_result['timestamps']}")
                                         
                                         # 处理最终识别结果
                                         self.on_recognition_result(final_result, is_final=True)
+                                    else:
+                                        print("⚠️ 未识别到有效文本")
+                                        
                                 except Exception as e:
                                     print(f"⚠️ 识别过程中出现错误: {e}")
                                 
@@ -780,15 +837,19 @@ class VoiceRecognitionApp:
             print("🔄 跳过重复识别结果")
             return
         
-        # 只在最终结果时处理命令识别，避免中间结果重复触发
+        # 处理命令识别，但不阻止后续处理
+        command_executed = False
         if is_final and self.enable_commands and self.command_processor:
             # 尝试处理为命令
-            if self.command_processor.process_text(text):
-                return  # 如果识别到命令并执行，则不进行其他处理
+            command_executed = self.command_processor.process_text(text)
+            if command_executed:
+                print("✅ 命令执行完成，继续监听语音...")
+                # 不return，继续执行后续处理
         
         # 这里可以添加其他自定义的结果处理逻辑
         # 例如：记录日志、发送到其他服务等
-        pass
+        if not command_executed:
+            print("💬 识别到普通语音，未匹配到命令")
     
     def start_recognition(self):
         """开始语音识别"""
@@ -840,9 +901,11 @@ class VoiceRecognitionApp:
         if self.enable_commands:
             print("🎯 命令识别功能已启用，可以使用语音命令控制系统")
             print("🛡️ 已启用命令防重复机制，相同命令间隔2秒执行")
-            print("🔧 VAD优化：动态阈值 + 最小语音长度检测")
+            print("🔧 VAD优化：动态阈值 + 短语音检测")
             print("🚫 识别结果去重：避免重复输出相同结果")
             print("⌨️ 使用keyboard库进行键盘模拟，更稳定可靠")
+            print("📝 短文本优化：支持150ms以上短语音识别")
+            print("⚡ 异步命令执行：命令执行不阻塞语音识别线程")
             self.print_available_commands()
         return True
     
@@ -929,6 +992,8 @@ def main():
     print("🚫 多层去重机制：彻底解决重复识别问题")
     print("🔧 智能命令匹配：容错识别不准确的结果")
     print("⌨️ 使用keyboard库重写命令系统，简洁稳定")
+    print("📝 短文本优化：最小150ms语音，避免截断问题")
+    print("⚡ 异步命令执行：命令执行不阻塞语音识别")
     print("💡 确保在安静环境中使用，说话清晰完整")
     
     # 可以设置上下文关键词提高识别准确率
