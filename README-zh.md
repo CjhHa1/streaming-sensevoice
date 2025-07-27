@@ -1,6 +1,6 @@
 # 🎙️ 语音识别应用
 
-基于 StreamingSenseVoice 的实时语音识别应用，支持语音命令控制系统操作。
+基于 StreamingSenseVoice 的实时语音识别应用，支持语音命令控制系统操作。特别优化了长语音输入支持。
 
 ## 📋 功能特性
 
@@ -8,6 +8,12 @@
 - 🎯 **语音命令控制**：通过语音控制系统操作（刷新、复制、粘贴等）
 - 🔧 **智能设备选择**：自动检测并选择麦克风设备
 - ⚙️ **灵活配置**：支持自定义上下文关键词和回调函数
+- 🚀 **改进的 VAD 算法**：
+  - 更好的长语音支持
+  - 动态噪声基底适应
+  - 能量平滑处理
+  - 灵活的语音边界检测
+  - 支持短暂停顿
 
 ## 🚀 快速安装
 
@@ -52,12 +58,16 @@ python voice_recognition_app.py
 
 ### 指定麦克风设备
 
-```bash
-# 查看所有可用的麦克风设备
-python voice_recognition_app.py --list-devices
+```python
+from voice_recognition_app import VoiceRecognitionApp
 
-# 使用指定的设备 ID（例如设备 0）
-python voice_recognition_app.py --device 0
+app = VoiceRecognitionApp()
+
+# 查看可用设备
+app.print_available_microphones()
+
+# 使用指定设备
+app.run(device_id=0)
 ```
 
 ## 🎯 支持的语音命令
@@ -104,8 +114,13 @@ python voice_recognition_app.py --device 0
 ```python
 from voice_recognition_app import VoiceRecognitionApp
 
-# 创建应用实例
-app = VoiceRecognitionApp(contexts=["停止", "开始", "退出"])
+# 创建应用实例（带上下文关键词）
+contexts = [
+    "停止", "开始", "退出", "刷新", "复制", "粘贴", "剪切", 
+    "撤销", "重做", "保存", "全选", "最小化", "最大化", 
+    "关闭", "切换", "打开", "新建", "截图", "静音"
+]
+app = VoiceRecognitionApp(contexts=contexts)
 
 # 运行应用
 app.run()
@@ -117,7 +132,7 @@ app.run()
 from voice_recognition_app import VoiceRecognitionApp
 
 class MyVoiceApp(VoiceRecognitionApp):
-    def on_recognition_result(self, result):
+    def on_recognition_result(self, result, is_final=False):
         text = result["text"].strip()
         print(f"识别结果：{text}")
         
@@ -132,20 +147,6 @@ app = MyVoiceApp()
 app.run()
 ```
 
-### 指定设备启动
-
-```python
-from voice_recognition_app import VoiceRecognitionApp
-
-app = VoiceRecognitionApp()
-
-# 查看可用设备
-app.print_available_microphones()
-
-# 使用指定设备
-app.run(device_id=0)
-```
-
 ## ⚙️ 配置选项
 
 ### 启用/禁用语音命令
@@ -158,37 +159,30 @@ app = VoiceRecognitionApp(enable_commands=True)
 app = VoiceRecognitionApp(enable_commands=False)
 ```
 
-### 自定义上下文关键词
+### VAD 参数配置
 
-```python
-# 设置上下文关键词提高识别准确率
-contexts = [
-    "停止", "开始", "退出", "刷新", "复制", "粘贴",
-    "保存", "打开", "关闭", "最小化", "最大化"
-]
-app = VoiceRecognitionApp(contexts=contexts)
+当前 VAD 使用以下优化参数：
+- 激活阈值：0.015（更容易检测到语音）
+- 静音填充：800ms（更长的容忍时间）
+- 最小语音：200ms（降低最小语音长度要求）
+- 最大静音：1500ms（避免过早结束）
+- 能量平滑窗口：5（减少误判）
+
+
+### 语音命令配置
+
+修改`keyboard_shortcust.yaml`文件，在末尾注册新的command，例如：
+
 ```
-
-## 🛠️ 打包发布
-
-使用 PyInstaller 打包成可执行文件：
-
-```bash
-# 打包应用
-pyinstaller VoiceRecognitionApp.spec
-
-# 生成的可执行文件在 dist 目录
-.\dist\VoiceRecognitionApp.exe
+- command: "战斗"
+  keys: "ctrlqweoqhweuihon"
+  description: "战斗"
 ```
+keys为keyboard库执行的按键顺序
 
 ## ❗ 常见问题
 
 ### 1. 找不到麦克风设备
-
-```bash
-# 检查可用设备
-python voice_recognition_app.py --list-devices
-```
 
 **解决方法：**
 - 确保麦克风已正确连接
@@ -224,32 +218,6 @@ python voice_recognition_app.py --list-devices
 - 确保安装了所有依赖包
 - 重新安装依赖：`pip install -r requirements.txt`
 
-## 📝 开发扩展
-
-### 添加自定义命令
-
-```python
-# 继承 VoiceRecognitionApp 类
-class CustomApp(VoiceRecognitionApp):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        # 添加自定义命令处理
-    
-    def on_recognition_result(self, result):
-        text = result["text"].strip()
-        
-        # 处理自定义命令
-        if "播放音乐" in text:
-            self.play_music()
-        else:
-            # 调用父类处理
-            super().on_recognition_result(result)
-    
-    def play_music(self):
-        print("开始播放音乐...")
-        # 实现播放音乐的逻辑
-```
-
 ## 📞 技术支持
 
 如果遇到问题：
@@ -260,4 +228,7 @@ class CustomApp(VoiceRecognitionApp):
 
 ---
 
-**注意**：本应用的语音命令功能专为 Windows 系统优化，在其他操作系统上可能需要相应修改。 
+**注意**：
+1. 本应用的语音命令功能专为 Windows 系统优化，在其他操作系统上可能需要相应修改。
+2. 支持长语音输入，不会过早中断，适合各种语音输入场景。
+3. 使用改进的 VAD 算法，具有更好的噪声适应能力和语音检测稳定性。 

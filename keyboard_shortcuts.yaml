@@ -101,5 +101,5 @@ shortcuts:
     description: "截取屏幕"
 
   - command: "战斗"
-    keys: "ctrlqweoqhweuihon"
+    keys: "ctrl+q+w+e+o+q+h+w+e+u+i+h+o+n"
     description: "战斗"
