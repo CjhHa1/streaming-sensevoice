@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-安全版语音识别应用
-改进版：更好地支持长语音输入，避免短语音中断
-"""
 
 import sys
 import time
@@ -15,6 +11,8 @@ import re
 import subprocess
 import os
 import webbrowser
+import requests
+import json
 from difflib import SequenceMatcher
 from shortcut_config import ShortcutConfig
 # 尝试导入pyperclip，如果失败则使用备用方案
@@ -50,33 +48,7 @@ def safe_findsource(object):
 
 # 替换原始的findsource函数
 inspect.findsource = safe_findsource
-
-try:
-    from streaming_sensevoice import StreamingSenseVoice
-except Exception as e:
-    print(f"⚠️ StreamingSenseVoice导入失败: {e}")
-    print("🔄 尝试使用备用语音识别方案...")
-    
-    # 如果StreamingSenseVoice导入失败，使用备用方案
-    class MockStreamingSenseVoice:
-        def __init__(self, contexts=None, model=None):
-            self.contexts = contexts
-            self.model = model
-            print("⚠️ 使用模拟语音识别服务")
-            
-        def reset(self):
-            pass
-            
-        def streaming_inference(self, audio_data, is_last=False):
-            # 模拟识别结果
-            if is_last and len(audio_data) > 1000:
-                yield {
-                    "text": "[模拟识别结果] 检测到语音输入",
-                    "timestamps": "0.0-2.0"
-                }
-    
-    StreamingSenseVoice = MockStreamingSenseVoice
-
+from streaming_sensevoice import StreamingSenseVoice
 
 class CommandProcessor:
     """命令处理器类，用于识别和执行语音命令"""
@@ -612,9 +584,9 @@ class ImprovedVAD:
 
 
 class VoiceRecognitionApp:
-    """安全版语音识别应用主类"""
+    """语音识别"""
     
-    def __init__(self, contexts=None, model_path=None, enable_commands=True):
+    def __init__(self, contexts=None, model_path=None, enable_commands=True, user_id=None, mouse_profile=None):
         """
         初始化语音识别应用
         
@@ -622,6 +594,8 @@ class VoiceRecognitionApp:
             contexts: 上下文列表，用于提高识别准确率
             model_path: 本地模型路径，如果指定则使用本地模型
             enable_commands: 是否启用命令识别功能
+            user_id: 发送到聊天接口的用户ID
+            mouse_profile: 发送到聊天接口的鼠标配置/画像
         """
         self.contexts = contexts or []
         self.model_path = model_path or "iic/SenseVoiceSmall"
@@ -630,6 +604,10 @@ class VoiceRecognitionApp:
         self.is_running = False
         self.selected_device_id = None
         self.recognition_thread = None
+        
+        # 聊天接口附加参数
+        self.user_id = user_id if user_id is not None else (os.getenv("USERNAME") or os.getenv("USER") or "local_user")
+        self.mouse_profile = mouse_profile if mouse_profile is not None else {}
         
         # 识别结果去重
         self.last_recognition_result = ""
@@ -861,11 +839,55 @@ class VoiceRecognitionApp:
         if is_final and self.enable_commands and self.command_processor:
             # 尝试处理为命令
             if self.command_processor.process_text(text):
+                print("🎯 识别到命令，已执行")
                 return  # 如果识别到命令并执行，则不进行其他处理
         
-        # 这里可以添加其他自定义的结果处理逻辑
-        # 例如：记录日志、发送到其他服务等
-        pass
+        # 如果不是命令，发送到聊天接口
+        if is_final:
+            self.send_to_chat(text)
+    
+    def send_to_chat(self, text):
+        """
+        将识别到的非命令文本发送到聊天接口
+        
+        Args:
+            text (str): 识别的文本内容
+        """
+        try:
+            url = "http://127.0.0.1:8000/chat"
+            payload = {
+                "message": text,
+                "user_id": self.user_id,
+                "mouse_profile": self.mouse_profile
+            }
+            
+            print(f"💬 发送到聊天接口: {text}")
+            
+            response = requests.post(
+                url, 
+                json=payload, 
+                headers={"Content-Type": "application/json"},
+                timeout=5
+            )
+            
+            if response.status_code == 200:
+                print("✅ 成功发送到聊天接口")
+                try:
+                    response_data = response.json()
+                    if "response" in response_data:
+                        print(f"🤖 聊天回复: {response_data['response']}")
+                except json.JSONDecodeError:
+                    print("📄 收到回复，但格式不是JSON")
+            else:
+                print(f"⚠️ 聊天接口返回状态码: {response.status_code}")
+                
+        except requests.exceptions.ConnectionError:
+            print("❌ 无法连接到聊天接口 (http://127.0.0.1:8000/chat)")
+            print("💡 请确保聊天服务正在运行")
+        except requests.exceptions.Timeout:
+            print("⏰ 聊天接口请求超时")
+        except Exception as e:
+            print(f"❌ 发送到聊天接口时出错: {e}")
     
     def start_recognition(self):
         """开始语音识别"""
@@ -924,6 +946,8 @@ class VoiceRecognitionApp:
             print("   - 灵活的语音边界检测")
             print("   - 支持长语音和短暂停顿")
             self.print_available_commands()
+
+            
         return True
     
     def run(self, device_id=None):
