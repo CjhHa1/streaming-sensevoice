@@ -13,3 +13,5 @@
 # limitations under the License.
 
 from .streaming_sensevoice import StreamingSenseVoice
+from .quantized_sensevoice import QuantizedStreamingSenseVoice
+__all__ = ["StreamingSenseVoice", "QuantizedStreamingSenseVoice"]

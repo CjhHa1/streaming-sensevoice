@@ -13,6 +13,7 @@ import os
 import webbrowser
 import requests
 import json
+import uuid
 from difflib import SequenceMatcher
 from shortcut_config import ShortcutConfig
 # 尝试导入pyperclip，如果失败则使用备用方案
@@ -586,7 +587,7 @@ class ImprovedVAD:
 class VoiceRecognitionApp:
     """语音识别"""
     
-    def __init__(self, contexts=None, model_path=None, enable_commands=True, user_id=None, mouse_profile=None):
+    def __init__(self, contexts=None, model_path=None, enable_commands=True, user_id=None, mouse_profile=None, device="keyboard", profile_index=None):
         """
         初始化语音识别应用
         
@@ -606,8 +607,12 @@ class VoiceRecognitionApp:
         self.recognition_thread = None
         
         # 聊天接口附加参数
-        self.user_id = user_id if user_id is not None else (os.getenv("USERNAME") or os.getenv("USER") or "local_user")
+        # 用户ID：优先使用传入值，否则从文件读取或生成并持久化
+        self.user_id = user_id if user_id is not None else self.get_or_create_user_id()
         self.mouse_profile = mouse_profile if mouse_profile is not None else {}
+        # 设备与画像索引（与云端 ChatRequest 模型对齐）
+        self.device = device  # 可选: "keyboard" 或 "mouse"
+        self.profile_index = profile_index  # 可选: int
         
         # 识别结果去重
         self.last_recognition_result = ""
@@ -858,8 +863,12 @@ class VoiceRecognitionApp:
             payload = {
                 "message": text,
                 "user_id": self.user_id,
-                "mouse_profile": self.mouse_profile
+                "device": self.device,
+                "mouse_profile": self.mouse_profile,
             }
+            # 仅当提供了画像索引时才发送
+            if self.profile_index is not None:
+                payload["profile_index"] = self.profile_index
             
             print(f"💬 发送到聊天接口: {text}")
             
@@ -874,13 +883,56 @@ class VoiceRecognitionApp:
                 print("✅ 成功发送到聊天接口")
                 try:
                     response_data = response.json()
-                    if "response" in response_data:
-                        print(f"🤖 聊天回复: {response_data['response']}")
+
+                    # 优先处理标准返回结构
+                    if isinstance(response_data, dict):
+                        # 错误返回
+                        if "error" in response_data:
+                            print(f"❌ 聊天接口错误: {response_data.get('error')}")
+                            return
+
+                        message_type = response_data.get("message_type")
+
+                        if message_type == "message_only":
+                            message_text = response_data.get("message", "")
+                            if message_text:
+                                print(f"🤖 聊天回复: {message_text}")
+                            else:
+                                print("🤖 聊天回复为空")
+
+                        elif message_type == "function_call":
+                            # 打印辅助消息
+                            aux_message = response_data.get("message")
+                            if aux_message:
+                                print(f"🤖 系统信息: {aux_message}")
+
+                            function_call = response_data.get("function_call") or {}
+                            if isinstance(function_call, dict) and function_call:
+                                print(f"🧩 收到函数调用请求，共{len(function_call)}个")
+                                for function_name, arguments in function_call.items():
+                                    print(f"🔧 函数: {function_name}")
+                                    try:
+                                        print(f"   参数: {json.dumps(arguments, ensure_ascii=False)}")
+                                    except Exception:
+                                        print(f"   参数: {arguments}")
+                            else:
+                                print("🧩 收到函数调用请求，但内容为空")
+
+                        else:
+                            # 向后兼容旧格式字段
+                            if "message" in response_data:
+                                print(f"🤖 聊天回复: {response_data.get('message')}")
+                            elif "response" in response_data:
+                                print(f"🤖 聊天回复: {response_data.get('response')}")
+                            else:
+                                print(f"📦 未知回复格式: {response_data}")
+                    else:
+                        print(f"📦 未知回复类型: {type(response_data)}")
+
                 except json.JSONDecodeError:
                     print("📄 收到回复，但格式不是JSON")
             else:
                 print(f"⚠️ 聊天接口返回状态码: {response.status_code}")
-                
         except requests.exceptions.ConnectionError:
             print("❌ 无法连接到聊天接口 (http://127.0.0.1:8000/chat)")
             print("💡 请确保聊天服务正在运行")
@@ -888,6 +940,38 @@ class VoiceRecognitionApp:
             print("⏰ 聊天接口请求超时")
         except Exception as e:
             print(f"❌ 发送到聊天接口时出错: {e}")
+
+    def get_or_create_user_id(self, file_path=None):
+        """读取持久化的用户ID，若不存在则随机生成并保存。
+
+        Args:
+            file_path (str, optional): 用户ID文件路径，默认保存到项目 data/user_id.txt。
+
+        Returns:
+            str: 用户ID
+        """
+        try:
+            if not file_path:
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+                file_path = os.path.join(base_dir, "data", "user_id.txt")
+
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
+            if os.path.exists(file_path):
+                with open(file_path, "r", encoding="utf-8") as f:
+                    stored_id = f.read().strip()
+                    if stored_id:
+                        return stored_id
+
+            # 生成新的用户ID并保存
+            new_id = f"user_{uuid.uuid4().hex}"
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(new_id)
+            print(f"🆔 已生成并保存用户ID: {new_id}")
+            return new_id
+        except Exception as e:
+            print(f"⚠️ 用户ID持久化失败，使用临时ID: {e}")
+            return f"user_{uuid.uuid4().hex}"
     
     def start_recognition(self):
         """开始语音识别"""

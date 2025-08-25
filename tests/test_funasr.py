@@ -4,12 +4,13 @@ chunk_size = [0, 10, 5] #[0, 10, 5] 600ms, [0, 8, 4] 480ms
 encoder_chunk_look_back = 4 #number of chunks to lookback for encoder self-attention
 decoder_chunk_look_back = 1 #number of encoder chunks to lookback for decoder cross-attention
 
-model = AutoModel(model="paraformer-zh-streaming")
+# model = AutoModel(model="paraformer-zh-streaming")
+model = AutoModel(model="iic/SenseVoiceSmall")
 
 import soundfile
 import os
 
-wav_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "test_16k.wav")
+wav_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "test_3.wav")
 speech, sample_rate = soundfile.read(wav_file)
 chunk_stride = chunk_size[1] * 960 # 600ms
 
